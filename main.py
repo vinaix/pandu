@@ -202,7 +202,6 @@ def create_entry(data: dict, user=Depends(verify_admin)):
 # ------------------------
 @app.put("/admin/dashboard")
 def update_dashboard(data: dict, user=Depends(verify_admin)):
-    # 1. Fetch existing row
     existing = (
         supabase
         .table("dashboard")
@@ -214,20 +213,22 @@ def update_dashboard(data: dict, user=Depends(verify_admin)):
     )
 
     if not existing:
-        raise HTTPException(500, "Dashboard row missing")
+        raise HTTPException(status_code=400, detail="Dashboard row missing")
 
-    # 2. Merge instead of partial upsert
-    payload = {
-        **existing,
-        **data,
-        "id": 1,
-        "updated_at": datetime.datetime.utcnow().isoformat(),
+    allowed = {
+        "name",
+        "title",
+        "photo_url",
+        "metrics",
+        "growth",
+        "growth_years",
+        "practice_mix",
     }
 
-    supabase.table("dashboard").upsert(
-        payload,
-        on_conflict="id"
-    ).execute()
+    payload = {**existing, **{k: v for k, v in data.items() if k in allowed}}
+    payload["updated_at"] = datetime.datetime.utcnow().isoformat()
+
+    supabase.table("dashboard").update(payload).eq("id", 1).execute()
 
     return {"status": "updated"}
 
