@@ -2,6 +2,7 @@ import os
 import json
 from fastapi import FastAPI, Depends, HTTPException, Header
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 import firebase_admin
 from firebase_admin import credentials, auth, db
@@ -33,6 +34,16 @@ database = db.reference("/")
 # FASTAPI APP
 # ------------------------
 app = FastAPI(title="CA Portfolio API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://your-frontend-domain.com"  # add later
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ------------------------
 # AUTH DEPENDENCY
