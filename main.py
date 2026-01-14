@@ -96,6 +96,26 @@ def get_sections():
         .data
     )
 
+
+# ------------------------
+# PUBLIC DASHBOARD
+# ------------------------
+@app.get("/dashboard")
+def get_dashboard():
+    result = (
+        supabase
+        .table("dashboard")
+        .select("*")
+        .eq("id", 1)
+        .single()
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Dashboard not configured")
+
+    return result.data
+
 # ------------------------
 # FILE UPLOAD
 # ------------------------
