@@ -217,3 +217,18 @@ def get_entries(section: str):
         .execute()
         .data
     )
+
+
+
+# update section
+@app.put("/admin/section")
+def update_section(data: dict, user=Depends(verify_admin)):
+    supabase.table("sections").update(data).eq("key", data["key"]).execute()
+    return {"status": "updated"}
+
+# delete entry
+@app.delete("/admin/entry/{entry_id}")
+def delete_entry(entry_id: str, user=Depends(verify_admin)):
+    supabase.table("entries").delete().eq("id", entry_id).execute()
+    return {"status": "deleted"}
+
