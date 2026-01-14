@@ -181,19 +181,6 @@ async def upload_file(
 # ------------------------
 @app.put("/admin/dashboard")
 def update_dashboard(data: dict, user=Depends(verify_admin)):
-    existing = (
-        supabase
-        .table("dashboard")
-        .select("*")
-        .eq("id", 1)
-        .single()
-        .execute()
-        .data
-    )
-
-    if not existing:
-        raise HTTPException(status_code=400, detail="Dashboard row missing")
-
     allowed = {
         "name",
         "title",
@@ -204,10 +191,14 @@ def update_dashboard(data: dict, user=Depends(verify_admin)):
         "practice_mix",
     }
 
-    payload = {**existing}
-    for k in allowed:
-        if k in data:
-            payload[k] = data[k]
+    payload = {
+        k: v
+        for k, v in data.items()
+        if k in allowed and v is not None
+    }
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
 
     payload["updated_at"] = datetime.datetime.utcnow().isoformat()
 
