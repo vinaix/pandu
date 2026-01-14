@@ -1,46 +1,62 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.staticfiles import StaticFiles
-import secrets, os, json
+import os
+from fastapi import FastAPI, Depends, HTTPException, Header
+from dotenv import load_dotenv
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
-security = HTTPBasic()
+import firebase_admin
+from firebase_admin import credentials, auth, db
 
-# ---------------- CREDENTIALS ----------------
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "finance123"
+# ------------------------
+# ENV
+# ------------------------
+load_dotenv()
+ADMIN_UID = os.getenv("ADMIN_UID")
 
-# ---------------- AUTH FUNCTION ----------------
-def admin_auth(credentials: HTTPBasicCredentials = Depends(security)):
-    valid_user = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    valid_pass = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+# ------------------------
+# FIREBASE INIT
+# ------------------------
+cred = credentials.Certificate("firebase-admin.json")
+firebase_admin.initialize_app(cred)
 
-    if not (valid_user and valid_pass):
-        # ⛔ NO HTML, NO ACCESS
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"}
-        )
+db.reference("/")
 
-    return True
+# ------------------------
+# FASTAPI APP
+# ------------------------
+app = FastAPI(title="CA Portfolio API")
 
-# ---------------- ROUTES ----------------
+# ------------------------
+# AUTH DEPENDENCY
+# ------------------------
+def verify_admin(authorization: str = Header(...)):
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise Exception()
+
+        decoded = auth.verify_id_token(token)
+
+        if decoded["uid"] != ADMIN_UID:
+            raise Exception()
+
+        return decoded
+
+    except Exception:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+# ------------------------
+# HEALTH CHECK
+# ------------------------
 @app.get("/")
-def public_home(request: Request):
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request}
-    )
+def health():
+    return {"status": "running"}
 
-@app.get("/admin")
-def admin_home(
-    request: Request,
-    _: bool = Depends(admin_auth)  # 🔐 STRICTLY REQUIRED
-):
-    return templates.TemplateResponse(
-        "admin/index.html",
-        {"request": request}
-    )
+# ------------------------
+# ADMIN TEST ENDPOINT
+# ------------------------
+@app.get("/admin/test")
+def admin_test(user=Depends(verify_admin)):
+    return {
+        "message": "Admin access granted",
+        "uid": user["uid"],
+        "email": user.get("email")
+    }
