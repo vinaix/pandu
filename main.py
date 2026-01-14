@@ -35,11 +35,12 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 # CONSTANTS
 # ------------------------
 ALLOWED_SECTIONS = {
+    "dashboard",
     "models",
     "valuations",
     "research",
     "presentations",
-    "dashboard"
+    "contact",
 }
 
 ALLOWED_MIME_TYPES = {
@@ -69,8 +70,11 @@ app.add_middleware(
 # ------------------------
 def verify_admin(authorization: str = Header(...)):
     try:
-        token = authorization.split()[1]
-        decoded = auth.verify_id_token(token)
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise Exception()
+
+        decoded = auth.verify_id_token(parts[1])
 
         if decoded["uid"] not in ADMIN_UIDS:
             raise Exception()
@@ -80,6 +84,12 @@ def verify_admin(authorization: str = Header(...)):
     except Exception:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+# ------------------------
+# HEALTH
+# ------------------------
+@app.get("/")
+def health():
+    return {"status": "running"}
 
 # ------------------------
 # PUBLIC SECTIONS
@@ -95,7 +105,6 @@ def get_sections():
         .execute()
         .data
     )
-
 
 # ------------------------
 # PUBLIC DASHBOARD
@@ -119,7 +128,6 @@ def get_dashboard():
 # ------------------------
 # FILE UPLOAD
 # ------------------------
-
 @app.post("/admin/upload")
 async def upload_file(
     section: str,
@@ -154,17 +162,14 @@ async def upload_file(
     return {
         "file_url": public_url,
         "file_type": file.content_type,
-        "file_name": file.filename
+        "file_name": file.filename,
     }
 
 # ------------------------
 # CREATE ENTRY
 # ------------------------
 @app.post("/admin/entry")
-def create_entry(
-    data: dict,
-    user=Depends(verify_admin)
-):
+def create_entry(data: dict, user=Depends(verify_admin)):
     if data.get("section_key") not in ALLOWED_SECTIONS:
         raise HTTPException(status_code=400, detail="Invalid section")
 
@@ -176,30 +181,35 @@ def create_entry(
         "description": data.get("description"),
         "file_url": data.get("file_url"),
         "file_type": data.get("file_type"),
-        "created_at": datetime.datetime.utcnow().isoformat()
+        "created_at": datetime.datetime.utcnow().isoformat(),
     }
 
     supabase.table("entries").insert(entry).execute()
     return {"status": "created"}
 
-
 # ------------------------
 # ADMIN UPDATE DASHBOARD
 # ------------------------
 @app.put("/admin/dashboard")
-def update_dashboard(
-    data: dict,
-    user=Depends(verify_admin)
-):
-    supabase.table("dashboard").update({
-        **data,
-        "updated_at": datetime.datetime.utcnow().isoformat()
-    }).eq("id", 1).execute()
+def update_dashboard(data: dict, user=Depends(verify_admin)):
+    allowed = {
+        "name",
+        "title",
+        "photo_url",
+        "metrics",
+        "growth",
+        "growth_years",
+        "practice_mix",
+    }
 
+    payload = {k: v for k, v in data.items() if k in allowed}
+    payload["updated_at"] = datetime.datetime.utcnow().isoformat()
+
+    supabase.table("dashboard").update(payload).eq("id", 1).execute()
     return {"status": "updated"}
 
 # ------------------------
-# PUBLIC READ
+# PUBLIC ENTRIES
 # ------------------------
 @app.get("/entries/{section}")
 def get_entries(section: str):
@@ -218,17 +228,27 @@ def get_entries(section: str):
         .data
     )
 
-
-
-# update section
+# ------------------------
+# ADMIN UPDATE SECTION
+# ------------------------
 @app.put("/admin/section")
 def update_section(data: dict, user=Depends(verify_admin)):
-    supabase.table("sections").update(data).eq("key", data["key"]).execute()
+    required = {"key", "title", "order_no", "enabled"}
+    if not required.issubset(data):
+        raise HTTPException(status_code=400, detail="Missing fields")
+
+    supabase.table("sections").update({
+        "title": data["title"],
+        "order_no": data["order_no"],
+        "enabled": data["enabled"],
+    }).eq("key", data["key"]).execute()
+
     return {"status": "updated"}
 
-# delete entry
+# ------------------------
+# DELETE ENTRY
+# ------------------------
 @app.delete("/admin/entry/{entry_id}")
 def delete_entry(entry_id: str, user=Depends(verify_admin)):
     supabase.table("entries").delete().eq("id", entry_id).execute()
     return {"status": "deleted"}
-
