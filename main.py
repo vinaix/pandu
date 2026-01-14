@@ -1,96 +1,99 @@
-import os
-import json
-from fastapi import FastAPI, Depends, HTTPException, Header
-from dotenv import load_dotenv
+import os, json, uuid
+from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
+from supabase import create_client
 import firebase_admin
-from firebase_admin import credentials, auth, db
+from firebase_admin import credentials, auth
 
 # ------------------------
 # ENV
 # ------------------------
 load_dotenv()
 
-ADMIN_UIDS = [
-    uid.strip()
-    for uid in os.getenv("ADMIN_UIDS", "").split(",")
-    if uid.strip()
-]
-
+ADMIN_UIDS = [u.strip() for u in os.getenv("ADMIN_UIDS","").split(",") if u.strip()]
 FIREBASE_ADMIN_JSON = os.getenv("FIREBASE_ADMIN_JSON")
-FIREBASE_DB_URL = os.getenv("FIREBASE_DB_URL")
 
-if not ADMIN_UIDS:
-    raise RuntimeError("ADMIN_UIDS is missing or empty")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-if not FIREBASE_ADMIN_JSON or not FIREBASE_DB_URL:
-    raise RuntimeError("Missing Firebase environment variables")
+if not ADMIN_UIDS or not FIREBASE_ADMIN_JSON or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise RuntimeError("Missing env vars")
 
 # ------------------------
-# FIREBASE INIT (ENV BASED)
+# FIREBASE AUTH ONLY
 # ------------------------
 cred = credentials.Certificate(json.loads(FIREBASE_ADMIN_JSON))
-
-firebase_admin.initialize_app(
-    cred,
-    {"databaseURL": FIREBASE_DB_URL}
-)
-
-database = db.reference("/")
+firebase_admin.initialize_app(cred)
 
 # ------------------------
-# FASTAPI APP
+# SUPABASE
+# ------------------------
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+# ------------------------
+# APP
 # ------------------------
 app = FastAPI(title="CA Portfolio API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        # add production frontend later
-    ],
-    allow_credentials=True,
+    allow_origins=["http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ------------------------
-# AUTH DEPENDENCY
+# AUTH
 # ------------------------
 def verify_admin(authorization: str = Header(...)):
     try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise ValueError("Invalid auth scheme")
-
+        token = authorization.split()[1]
         decoded = auth.verify_id_token(token)
-
-        if decoded.get("uid") not in ADMIN_UIDS:
-            raise PermissionError("Not an admin")
-
+        if decoded["uid"] not in ADMIN_UIDS:
+            raise Exception()
         return decoded
-
     except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 # ------------------------
-# HEALTH CHECK
+# FILE UPLOAD (PDF / EXCEL / PPT)
 # ------------------------
-@app.get("/")
-def health():
-    return {"status": "running"}
+@app.post("/admin/upload")
+def upload_file(
+    section: str,
+    file: UploadFile = File(...),
+    user=Depends(verify_admin)
+):
+    file_id = str(uuid.uuid4())
+    path = f"{file_id}-{file.filename}"
+
+    supabase.storage.from_(section).upload(
+        path,
+        file.file,
+        {"content-type": file.content_type}
+    )
+
+    public_url = supabase.storage.from_(section).get_public_url(path)
+
+    return {"file_url": public_url}
 
 # ------------------------
-# ADMIN TEST ENDPOINT
+# CREATE ENTRY
 # ------------------------
-@app.get("/admin/test")
-def admin_test(user=Depends(verify_admin)):
-    return {
-        "message": "Admin access granted",
-        "uid": user["uid"],
-        "email": user.get("email"),
-    }
+@app.post("/admin/entry")
+def create_entry(
+    data: dict,
+    user=Depends(verify_admin)
+):
+    data["id"] = str(uuid.uuid4())
+    supabase.table("entries").insert(data).execute()
+    return {"status": "created"}
+
+# ------------------------
+# PUBLIC READ
+# ------------------------
+@app.get("/entries/{section}")
+def get_entries(section: str):
+    return supabase.table("entries").select("*").eq("section_key", section).execute().data
