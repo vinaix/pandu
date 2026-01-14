@@ -157,14 +157,14 @@ async def upload_file(
 
     path = f"{uuid.uuid4()}-{file.filename}"
 
-    upload = supabase.storage.from_(section).upload(
-        path,
-        contents,
-        {"content-type": file.content_type},
-    )
-
-    if upload.error:
-        raise HTTPException(status_code=500, detail=upload.error.message)
+    try:
+        supabase.storage.from_(section).upload(
+            path,
+            contents,
+            {"content-type": file.content_type},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     public_url = supabase.storage.from_(section).get_public_url(path)
 
@@ -173,6 +173,7 @@ async def upload_file(
         "file_type": file.content_type,
         "file_name": file.filename,
     }
+
 
 # ------------------------
 # CREATE ENTRY
