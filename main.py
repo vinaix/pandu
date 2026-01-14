@@ -44,12 +44,19 @@ ALLOWED_SECTIONS = {
 }
 
 ALLOWED_MIME_TYPES = {
+    # documents
     "application/pdf",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-powerpoint",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+
+    # images (PROFILE PHOTO)
+    "image/jpeg",
+    "image/png",
+    "image/webp",
 }
+
 
 MAX_FILE_SIZE_MB = 20
 
