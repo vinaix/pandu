@@ -148,14 +148,16 @@ async def upload_file(
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(status_code=400, detail="File too large")
 
-    file_id = str(uuid.uuid4())
-    path = f"{file_id}-{file.filename}"
+    path = f"{uuid.uuid4()}-{file.filename}"
 
-    supabase.storage.from_(section).upload(
+    upload = supabase.storage.from_(section).upload(
         path,
         contents,
-        {"content-type": file.content_type}
+        {"content-type": file.content_type},
     )
+
+    if upload.error:
+        raise HTTPException(status_code=500, detail=upload.error.message)
 
     public_url = supabase.storage.from_(section).get_public_url(path)
 
@@ -188,7 +190,7 @@ def create_entry(data: dict, user=Depends(verify_admin)):
     return {"status": "created"}
 
 # ------------------------
-# ADMIN UPDATE DASHBOARD
+# ADMIN UPDATE DASHBOARD (FIXED)
 # ------------------------
 @app.put("/admin/dashboard")
 def update_dashboard(data: dict, user=Depends(verify_admin)):
@@ -205,7 +207,12 @@ def update_dashboard(data: dict, user=Depends(verify_admin)):
     payload = {k: v for k, v in data.items() if k in allowed}
     payload["updated_at"] = datetime.datetime.utcnow().isoformat()
 
-    supabase.table("dashboard").update(payload).eq("id", 1).execute()
+    # IMPORTANT: ensure row exists
+    supabase.table("dashboard").upsert(
+        {**payload, "id": 1},
+        on_conflict="id"
+    ).execute()
+
     return {"status": "updated"}
 
 # ------------------------
@@ -229,14 +236,10 @@ def get_entries(section: str):
     )
 
 # ------------------------
-# ADMIN UPDATE SECTION
+# UPDATE SECTION
 # ------------------------
 @app.put("/admin/section")
 def update_section(data: dict, user=Depends(verify_admin)):
-    required = {"key", "title", "order_no", "enabled"}
-    if not required.issubset(data):
-        raise HTTPException(status_code=400, detail="Missing fields")
-
     supabase.table("sections").update({
         "title": data["title"],
         "order_no": data["order_no"],
