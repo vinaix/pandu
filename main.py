@@ -80,9 +80,26 @@ def verify_admin(authorization: str = Header(...)):
     except Exception:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+
+# ------------------------
+# PUBLIC SECTIONS
+# ------------------------
+@app.get("/sections")
+def get_sections():
+    return (
+        supabase
+        .table("sections")
+        .select("*")
+        .eq("enabled", True)
+        .order("order_no")
+        .execute()
+        .data
+    )
+
 # ------------------------
 # FILE UPLOAD
 # ------------------------
+
 @app.post("/admin/upload")
 async def upload_file(
     section: str,
