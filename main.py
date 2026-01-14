@@ -182,6 +182,22 @@ def create_entry(
     supabase.table("entries").insert(entry).execute()
     return {"status": "created"}
 
+
+# ------------------------
+# ADMIN UPDATE DASHBOARD
+# ------------------------
+@app.put("/admin/dashboard")
+def update_dashboard(
+    data: dict,
+    user=Depends(verify_admin)
+):
+    supabase.table("dashboard").update({
+        **data,
+        "updated_at": datetime.datetime.utcnow().isoformat()
+    }).eq("id", 1).execute()
+
+    return {"status": "updated"}
+
 # ------------------------
 # PUBLIC READ
 # ------------------------
